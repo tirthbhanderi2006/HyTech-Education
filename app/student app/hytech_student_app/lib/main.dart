@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'core/theme/app_colors.dart';
 import 'features/auth/bloc/auth_bloc.dart';
+import 'features/home/bloc/cases_bloc.dart';
+import 'features/documents/bloc/documents_bloc.dart';
+import 'features/notifications/bloc/notifications_bloc.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/student_home.dart';
 
@@ -17,8 +20,13 @@ class VisaFlowStudentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final nunitoBase = GoogleFonts.nunitoTextTheme();
 
-    return BlocProvider(
-      create: (_) => AuthBloc(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => AuthBloc()..add(AuthCheckRequested())),
+        BlocProvider(create: (_) => CasesBloc()),
+        BlocProvider(create: (_) => DocumentsBloc()),
+        BlocProvider(create: (_) => NotificationsBloc()),
+      ],
       child: MaterialApp(
         title: 'VisaFlow',
         debugShowCheckedModeBanner: false,

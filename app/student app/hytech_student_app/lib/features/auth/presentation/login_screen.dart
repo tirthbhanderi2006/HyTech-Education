@@ -37,11 +37,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  Future<void> _onLogin() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
-    context.read<AuthBloc>().add(const LoginRequested('student', 'student'));
+  void _onLogin() {
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields')),
+      );
+      _shakeCtrl.forward(from: 0);
+      return;
+    }
+    context.read<AuthBloc>().add(AuthLoginRequested(email, password));
   }
 
   @override
@@ -50,7 +56,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       backgroundColor: AppColors.surface,
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
+          if (state is AuthLoading) {
+            setState(() => _isLoading = true);
+          }
           if (state is AuthAuthenticated) {
+            setState(() => _isLoading = false);
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const StudentHome()),
             );
@@ -58,6 +68,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           if (state is AuthError) {
             setState(() => _isLoading = false);
             _shakeCtrl.forward(from: 0);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
           }
         },
         child: SafeArea(
