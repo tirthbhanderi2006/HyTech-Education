@@ -6,6 +6,7 @@ import 'features/auth/bloc/auth_bloc.dart';
 import 'features/home/bloc/cases_bloc.dart';
 import 'features/documents/bloc/documents_bloc.dart';
 import 'features/notifications/bloc/notifications_bloc.dart';
+import 'features/appointments/bloc/meetings_bloc.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/student_home.dart';
 
@@ -26,6 +27,7 @@ class VisaFlowStudentApp extends StatelessWidget {
         BlocProvider(create: (_) => CasesBloc()),
         BlocProvider(create: (_) => DocumentsBloc()),
         BlocProvider(create: (_) => NotificationsBloc()),
+        BlocProvider(create: (_) => MeetingsBloc()..add(MeetingsLoadRequested())),
       ],
       child: MaterialApp(
         title: 'VisaFlow',

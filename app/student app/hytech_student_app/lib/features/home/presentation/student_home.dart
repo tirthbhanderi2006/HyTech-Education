@@ -8,6 +8,10 @@ import '../../profile/presentation/profile_screen.dart';
 import '../../notifications/presentation/notifications_screen.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../bloc/cases_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import '../../../core/models/meeting_model.dart';
+import '../../appointments/bloc/meetings_bloc.dart';
 
 class StudentHome extends StatefulWidget {
   const StudentHome({super.key});
@@ -19,13 +23,6 @@ class StudentHome extends StatefulWidget {
 class _StudentHomeState extends State<StudentHome> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [
-    _HomeTab(),
-    DocumentsScreen(),
-    AppointmentsScreen(),
-    ProfileScreen(),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -35,6 +32,13 @@ class _StudentHomeState extends State<StudentHome> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      _HomeTab(onBookTap: () => setState(() => _currentIndex = 2)),
+      const DocumentsScreen(),
+      const AppointmentsScreen(),
+      const ProfileScreen(),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -67,7 +71,7 @@ class _StudentHomeState extends State<StudentHome> {
           child: Container(color: AppColors.surfaceVariant, height: 2),
         ),
       ),
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.surfaceVariant, width: 2))),
         child: BottomNavigationBar(
@@ -86,7 +90,8 @@ class _StudentHomeState extends State<StudentHome> {
 }
 
 class _HomeTab extends StatelessWidget {
-  const _HomeTab();
+  final VoidCallback onBookTap;
+  const _HomeTab({required this.onBookTap});
 
   @override
   Widget build(BuildContext context) {
@@ -218,9 +223,9 @@ class _HomeTab extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(child: _QuickAction(icon: Icons.upload_file, label: 'Upload Docs', color: AppColors.primary, onTap: () {})),
+                  Expanded(child: _QuickAction(icon: Icons.upload_file, label: 'Upload Docs', color: AppColors.primary, onTap: () => onBookTap())), // Taps to appointments screen or documents screen
                   const SizedBox(width: 12),
-                  Expanded(child: _QuickAction(icon: Icons.event_available, label: 'Book Meeting', color: AppColors.secondary, onTap: () {})),
+                  Expanded(child: _QuickAction(icon: Icons.event_available, label: 'Book Meeting', color: AppColors.secondary, onTap: onBookTap)),
                   const SizedBox(width: 12),
                   Expanded(child: _QuickAction(icon: Icons.auto_awesome, label: 'AI Check', color: AppColors.tertiary, onTap: () {})),
                 ],
@@ -228,45 +233,115 @@ class _HomeTab extends StatelessWidget {
               const SizedBox(height: 24),
               const Text('Upcoming Appointment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.onSurface)),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.secondary, width: 2),
-                  boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(color: AppColors.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.videocam, color: AppColors.secondary, size: 28),
-                    ),
-                    const SizedBox(width: 16),
-                    const Expanded(
+              BlocBuilder<MeetingsBloc, MeetingsState>(
+                builder: (context, state) {
+                  MeetingModel? upcomingMeeting;
+                  if (state is MeetingsLoaded && state.meetings.isNotEmpty) {
+                    final activeMeetings = state.meetings.where((m) => m.isConfirmed && m.startTime.isAfter(DateTime.now())).toList();
+                    if (activeMeetings.isNotEmpty) {
+                      upcomingMeeting = activeMeetings.first;
+                    }
+                  }
+
+                  if (upcomingMeeting == null) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.surfaceVariant, width: 2),
+                        boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
+                      ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Video Consultation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.onSurface)),
-                          Text('With Rahul Kapoor (Consultant)', style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant)),
-                          SizedBox(height: 4),
-                          Text('Tomorrow, 10:30 AM', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondary, fontSize: 13)),
+                          Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), shape: BoxShape.circle),
+                                child: const Icon(Icons.event_note, color: AppColors.primary, size: 24),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('No sessions booked yet', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.onSurface)),
+                                    SizedBox(height: 2),
+                                    Text('Connect with an advisor for expert visa guidance.', style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: onBookTap,
+                              child: const Text('Book Video Consultation', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
+                          )
                         ],
                       ),
+                    );
+                  }
+
+                  final dateStr = DateFormat('EEEE, d MMMM').format(upcomingMeeting.startTime);
+                  final timeStr = DateFormat('h:mm a').format(upcomingMeeting.startTime);
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.secondary, width: 2),
+                      boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
                     ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.secondary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      onPressed: () {},
-                      child: const Text('Join', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(color: AppColors.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.videocam, color: AppColors.secondary, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(upcomingMeeting.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.onSurface)),
+                              const Text('Visa Counselor Consultation', style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant)),
+                              const SizedBox(height: 4),
+                              Text('$dateStr, $timeStr', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.secondary, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        if (upcomingMeeting.canJoin)
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.secondary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            onPressed: () async {
+                              final uri = Uri.parse(upcomingMeeting!.meetLink!);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            child: const Text('Join', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 80),
             ],

@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/models/meeting_model.dart';
+import '../../../core/models/user_model.dart';
+import '../bloc/meetings_bloc.dart';
+import 'package:intl/intl.dart';
 
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key});
@@ -10,43 +16,505 @@ class AppointmentsScreen extends StatefulWidget {
 }
 
 class _AppointmentsScreenState extends State<AppointmentsScreen> {
+  int _selectedTab = 0; // 0: My Sessions, 1: Book Session
+
+  // Booking states
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  int _selectedSlot = 1;
-  int _meetingType = 0;
-
-  // Days that have available slots (mock data — swap with API later)
-  final Set<DateTime> _availableDays = {
-    DateTime.utc(2026, 5, 14),
-    DateTime.utc(2026, 5, 15),
-    DateTime.utc(2026, 5, 19),
-    DateTime.utc(2026, 5, 20),
-    DateTime.utc(2026, 5, 22),
-    DateTime.utc(2026, 5, 26),
-    DateTime.utc(2026, 5, 27),
-    DateTime.utc(2026, 5, 28),
-  };
+  int _selectedSlot = 0;
+  String? _selectedCounselorId;
+  final TextEditingController _notesController = TextEditingController();
 
   final List<String> _slots = ['09:00 AM', '10:30 AM', '01:00 PM', '03:45 PM'];
 
-  bool _isAvailable(DateTime day) {
-    return _availableDays.any((d) => isSameDay(d, day));
+  // Map slot index to start & end hour/minute
+  DateTime _getSlotDateTime(DateTime day, int slotIndex, bool isEnd) {
+    int hour = 9;
+    int minute = 0;
+    
+    switch (slotIndex) {
+      case 0: // 09:00 AM
+        hour = 9; minute = 0;
+        break;
+      case 1: // 10:30 AM
+        hour = 10; minute = 30;
+        break;
+      case 2: // 01:00 PM
+        hour = 13; minute = 0;
+        break;
+      case 3: // 03:45 PM
+        hour = 15; minute = 45;
+        break;
+    }
+
+    if (isEnd) {
+      // Meetings are 45 minutes long
+      final start = DateTime(day.year, day.month, day.day, hour, minute);
+      return start.add(const Duration(minutes: 45));
+    }
+    return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    return BlocListener<MeetingsBloc, MeetingsState>(
+      listener: (context, state) {
+        if (state is MeetingBooked) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Appointment booked successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Reset booking form and switch to My Sessions tab
+          setState(() {
+            _selectedTab = 0;
+            _selectedDay = null;
+            _selectedSlot = 0;
+            _notesController.clear();
+          });
+        } else if (state is MeetingsError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header & Custom Tab Toggle ─────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Counseling Sessions',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Book and join 1-on-1 sessions with expert visa counselors.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Capsule Tab Selector
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceVariant.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _tabButton(
+                              label: 'My Sessions',
+                              isSelected: _selectedTab == 0,
+                              onTap: () => setState(() => _selectedTab = 0),
+                            ),
+                          ),
+                          Expanded(
+                            child: _tabButton(
+                              label: 'Book a Session',
+                              isSelected: _selectedTab == 1,
+                              onTap: () => setState(() => _selectedTab = 1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Tab Contents ───────────────────────────────────────────────
+              Expanded(
+                child: BlocBuilder<MeetingsBloc, MeetingsState>(
+                  builder: (context, state) {
+                    if (state is MeetingsLoading) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: AppColors.primary),
+                      );
+                    }
+
+                    if (state is MeetingsLoaded) {
+                      return _selectedTab == 0
+                          ? _buildMySessionsTab(state.meetings)
+                          : _buildBookSessionTab(state.counselors);
+                    }
+
+                    // Initial / Error state handler
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: AppColors.onSurfaceVariant),
+                          const SizedBox(height: 16),
+                          const Text('Something went wrong or data is missing.'),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: () {
+                              context.read<MeetingsBloc>().add(MeetingsLoadRequested());
+                            },
+                            child: const Text('Retry'),
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab Switcher Button Widget ─────────────────────────────────────────────
+  Widget _tabButton({required String label, required bool isSelected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : AppColors.onSurface,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab 1: My Sessions View ────────────────────────────────────────────────
+  Widget _buildMySessionsTab(List<MeetingModel> meetings) {
+    final activeMeetings = meetings.where((m) => !m.isCancelled).toList();
+
+    if (activeMeetings.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.event_note, size: 64, color: AppColors.primary),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'No Upcoming Sessions',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.onSurface),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'You do not have any visa counseling sessions booked. Book a new session to connect with a consultant.',
+                textAlign: Center,
+                style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => setState(() => _selectedTab = 1),
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text('Book Session', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+      itemCount: activeMeetings.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        final meeting = activeMeetings[index];
+        return _meetingCard(meeting);
+      },
+    );
+  }
+
+  Widget _meetingCard(MeetingModel meeting) {
+    final dateStr = DateFormat('EEEE, d MMMM yyyy').format(meeting.startTime);
+    final timeStr = '${DateFormat('hh:mm a').format(meeting.startTime)} - ${DateFormat('hh:mm a').format(meeting.endTime)}';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.surfaceVariant, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.surfaceVariant,
+            offset: Offset(0, 3),
+            blurRadius: 4,
+          )
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status and Date
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    dateStr,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+                _statusBadge(meeting.status),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              timeStr,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: AppColors.onSurfaceVariant,
+              ),
+            ),
+            const Divider(height: 24, thickness: 1, color: AppColors.surfaceVariant),
+            
+            // Session Info
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondary.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.person, color: AppColors.secondary, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        meeting.title,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.onSurface),
+                      ),
+                      const Text(
+                        'Visa Counselor Session',
+                        style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            if (meeting.notes != null && meeting.notes!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Notes: ${meeting.notes}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
+
+            // Action Buttons
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                if (meeting.canJoin)
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.secondary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => _launchURL(meeting.meetLink!),
+                      icon: const Icon(Icons.videocam, color: Colors.white),
+                      label: const Text('Join Meet', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                if (meeting.canJoin) const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(color: AppColors.error),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () => _confirmCancel(meeting.id),
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusBadge(String status) {
+    Color bg = AppColors.surfaceVariant;
+    Color fg = AppColors.onSurfaceVariant;
+    String label = status.toUpperCase();
+
+    if (status == 'confirmed') {
+      bg = Colors.green.withOpacity(0.12);
+      fg = Colors.green;
+      label = 'CONFIRMED';
+    } else if (status == 'rescheduled') {
+      bg = Colors.amber.withOpacity(0.12);
+      fg = Colors.amber[800]!;
+      label = 'RESCHEDULED';
+    } else if (status == 'cancelled') {
+      bg = AppColors.errorContainer.withOpacity(0.5);
+      fg = AppColors.error;
+      label = 'CANCELLED';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  void _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the Meet link.')),
+      );
+    }
+  }
+
+  void _confirmCancel(String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Appointment'),
+        content: const Text('Are you sure you want to cancel this counseling session? This will release the time slot and notify the counselor.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('No, Keep It'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () {
+              context.read<MeetingsBloc>().add(MeetingCancelRequested(id));
+              Navigator.pop(context);
+            },
+            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Tab 2: Book Session View ───────────────────────────────────────────────
+  Widget _buildBookSessionTab(List<UserModel> counselors) {
+    if (counselors.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.people_outline, size: 48, color: AppColors.onSurfaceVariant),
+              SizedBox(height: 12),
+              Text('No available counselors to book at the moment.'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Set a default counselor if not yet selected
+    if (_selectedCounselorId == null && counselors.isNotEmpty) {
+      _selectedCounselorId = counselors.first.id;
+    }
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ──────────────────────────────────────────────────
-          const Text('Book Appointment', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.primary)),
-          const SizedBox(height: 4),
-          const Text('Select an available date and time slot.', style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant)),
-          const SizedBox(height: 20),
-
           // ── Calendar Card ────────────────────────────────────────────
           Container(
             decoration: BoxDecoration(
@@ -56,8 +524,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
             ),
             child: TableCalendar(
-              firstDay: DateTime.now().subtract(const Duration(days: 30)),
-              lastDay: DateTime.now().add(const Duration(days: 120)),
+              firstDay: DateTime.now(),
+              lastDay: DateTime.now().add(const Duration(days: 90)),
               focusedDay: _focusedDay,
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
               calendarFormat: _calendarFormat,
@@ -68,35 +536,30 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               },
               onFormatChanged: (format) => setState(() => _calendarFormat = format),
               onDaySelected: (selectedDay, focusedDay) {
-                if (!selectedDay.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
-                  setState(() {
-                    _selectedDay = selectedDay;
-                    _focusedDay = focusedDay;
-                  });
-                }
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
               },
               onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay),
-              enabledDayPredicate: (day) => !day.isBefore(DateTime.now().subtract(const Duration(days: 1))),
+              enabledDayPredicate: (day) {
+                // Disable weekends for business/consultation calls
+                return day.weekday != DateTime.saturday && day.weekday != DateTime.sunday;
+              },
               calendarStyle: CalendarStyle(
                 outsideDaysVisible: false,
                 selectedDecoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
                 selectedTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 todayDecoration: BoxDecoration(
-                  color: AppColors.primaryContainer.withAlpha(80),
+                  color: AppColors.primaryContainer.withOpacity(0.3),
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary, width: 2),
+                  border: Border.all(color: AppColors.primary, width: 1.5),
                 ),
                 todayTextStyle: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-                disabledTextStyle: TextStyle(color: AppColors.onSurfaceVariant.withAlpha(80)),
-                weekendTextStyle: const TextStyle(color: AppColors.onSurface),
+                disabledTextStyle: TextStyle(color: AppColors.onSurfaceVariant.withOpacity(0.3)),
+                weekendTextStyle: const TextStyle(color: AppColors.onSurfaceVariant),
                 defaultTextStyle: const TextStyle(color: AppColors.onSurface),
-                markerDecoration: const BoxDecoration(color: AppColors.primaryContainer, shape: BoxShape.circle),
-                // Show green dot on available days
-                markersMaxCount: 1,
               ),
-              eventLoader: (day) {
-                return _isAvailable(day) ? ['available'] : [];
-              },
               headerStyle: HeaderStyle(
                 formatButtonDecoration: BoxDecoration(
                   border: Border.all(color: AppColors.surfaceVariant, width: 2),
@@ -107,51 +570,35 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                 titleTextStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.onSurface),
                 leftChevronIcon: const Icon(Icons.chevron_left, color: AppColors.onSurfaceVariant),
                 rightChevronIcon: const Icon(Icons.chevron_right, color: AppColors.onSurfaceVariant),
-                decoration: const BoxDecoration(),
               ),
               daysOfWeekStyle: const DaysOfWeekStyle(
                 weekdayStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.onSurfaceVariant),
                 weekendStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.onSurfaceVariant),
               ),
-              calendarBuilders: CalendarBuilders(
-                // Custom marker — green pill for available days
-                markerBuilder: (context, day, events) {
-                  if (events.isNotEmpty && !isSameDay(day, _selectedDay)) {
-                    return Positioned(
-                      bottom: 4,
-                      child: Container(
-                        width: 6, height: 6,
-                        decoration: const BoxDecoration(color: AppColors.primaryContainer, shape: BoxShape.circle),
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
             ),
           ),
 
-          // ── Legend ───────────────────────────────────────────────────
+          // ── Selector Legend ─────────────────────────────────────────
           const SizedBox(height: 10),
           Row(
             children: [
-              _legend(AppColors.primaryContainer, 'Available'),
-              const SizedBox(width: 16),
               _legend(AppColors.primary, 'Selected'),
               const SizedBox(width: 16),
-              _legend(AppColors.surfaceVariant, 'Unavailable'),
+              _legend(AppColors.primaryContainer.withOpacity(0.3), 'Today'),
+              const SizedBox(width: 16),
+              _legend(AppColors.surfaceVariant, 'Weekends (Off)'),
             ],
           ),
 
-          // ── Selected Day Info ────────────────────────────────────────
+          // ── Selected Date Info ───────────────────────────────────────
           if (_selectedDay != null) ...[
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppColors.primary.withAlpha(12),
+                color: AppColors.primary.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withAlpha(60), width: 2),
+                border: Border.all(color: AppColors.primary.withOpacity(0.25), width: 1.5),
               ),
               child: Row(children: [
                 const Icon(Icons.event_available, color: AppColors.primary),
@@ -160,28 +607,39 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   'Selected: ${_formatDate(_selectedDay!)}',
                   style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
-                if (!_isAvailable(_selectedDay!)) ...[
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: AppColors.errorContainer, borderRadius: BorderRadius.circular(8)),
-                    child: const Text('No slots', style: TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.bold)),
-                  ),
-                ],
               ]),
             ),
           ],
 
+          // ── Counselor Dropdown ───────────────────────────────────────
+          const SizedBox(height: 20),
+          const Text('Select Counselor', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.surfaceVariant, width: 2),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedCounselorId,
+                isExpanded: true,
+                items: counselors.map((c) {
+                  return DropdownMenuItem<String>(
+                    value: c.id,
+                    child: Text(c.fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  );
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedCounselorId = val),
+              ),
+            ),
+          ),
+
           // ── Time Slots ───────────────────────────────────────────────
           const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Select Time', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
-              if (_selectedDay != null && !_isAvailable(_selectedDay!))
-                const Text('No available slots', style: TextStyle(fontSize: 12, color: AppColors.error)),
-            ],
-          ),
+          const Text('Select Time', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
           const SizedBox(height: 10),
           SizedBox(
             height: 52,
@@ -191,43 +649,26 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) {
                 final selected = i == _selectedSlot;
-                final enabled = _selectedDay == null || _isAvailable(_selectedDay!);
                 return GestureDetector(
-                  onTap: enabled ? () => setState(() => _selectedSlot = i) : null,
+                  onTap: () => setState(() => _selectedSlot = i),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                     decoration: BoxDecoration(
-                      color: !enabled
-                          ? AppColors.surfaceContainerHigh
-                          : selected
-                              ? AppColors.primaryContainer.withAlpha(60)
-                              : AppColors.surfaceContainerLowest,
+                      color: selected
+                          ? AppColors.primaryContainer.withOpacity(0.3)
+                          : AppColors.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: !enabled
-                            ? AppColors.surfaceVariant
-                            : selected
-                                ? AppColors.primary
-                                : AppColors.surfaceVariant,
+                        color: selected ? AppColors.primary : AppColors.surfaceVariant,
                         width: 2,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: selected && enabled ? AppColors.primary : AppColors.surfaceVariant,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
                     ),
                     child: Text(
                       _slots[i],
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: !enabled
-                            ? AppColors.onSurfaceVariant.withAlpha(100)
-                            : selected
-                                ? AppColors.onPrimaryContainer
-                                : AppColors.onSurface,
+                        color: selected ? AppColors.primary : AppColors.onSurface,
                       ),
                     ),
                   ),
@@ -236,63 +677,40 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
             ),
           ),
 
-          // ── Meeting Type & Notes ─────────────────────────────────────
+          // ── Notes ───────────────────────────────────────────────────
           const SizedBox(height: 20),
+          const Text('Notes for Consultant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppColors.surfaceVariant, width: 2),
-              boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Meeting Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _MeetingTypeButton(icon: Icons.videocam_outlined, label: 'Video Call', selected: _meetingType == 0, onTap: () => setState(() => _meetingType = 0))),
-                    const SizedBox(width: 12),
-                    Expanded(child: _MeetingTypeButton(icon: Icons.business_outlined, label: 'In-Person', selected: _meetingType == 1, onTap: () => setState(() => _meetingType = 1))),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Text('Notes for Consultant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface)),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.surfaceVariant, width: 2),
-                    boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 2))],
-                  ),
-                  child: const TextField(
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'E.g., I have questions about my bank statement requirements...',
-                      hintStyle: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(12),
-                    ),
-                  ),
-                ),
-              ],
+            child: TextField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'E.g., I have questions about my bank statement requirements...',
+                hintStyle: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.all(12),
+              ),
             ),
           ),
 
-          // ── Confirm Button ───────────────────────────────────────────
+          // ── Confirm Booking FAB Button ───────────────────────────────
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            height: 56,
+            height: 54,
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: _selectedDay != null ? AppColors.primary : AppColors.surfaceVariant,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
-              onPressed: _selectedDay != null ? _confirmBooking : null,
+              onPressed: _selectedDay != null ? _bookMeeting : null,
               icon: Icon(Icons.check_circle_outline, color: _selectedDay != null ? Colors.white : AppColors.onSurfaceVariant),
               label: Text(
                 _selectedDay != null ? 'CONFIRM BOOKING' : 'SELECT A DATE FIRST',
@@ -310,50 +728,19 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     );
   }
 
-  void _confirmBooking() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
-          Icon(Icons.check_circle, color: AppColors.primary, size: 28),
-          SizedBox(width: 10),
-          Text('Booking Confirmed!', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _dialogRow('Date', _formatDate(_selectedDay!)),
-            _dialogRow('Time', _slots[_selectedSlot]),
-            _dialogRow('Type', _meetingType == 0 ? 'Video Call' : 'In-Person'),
-            _dialogRow('Consultant', 'Rahul Kapoor'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: AppColors.primaryContainer.withAlpha(40), borderRadius: BorderRadius.circular(8)),
-              child: const Text('A confirmation will be sent via WhatsApp.', style: TextStyle(fontSize: 12, color: AppColors.onSurface)),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Great!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
+  void _bookMeeting() {
+    if (_selectedDay == null || _selectedCounselorId == null) return;
+    
+    final start = _getSlotDateTime(_selectedDay!, _selectedSlot, false);
+    final end = _getSlotDateTime(_selectedDay!, _selectedSlot, true);
 
-  Widget _dialogRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        SizedBox(width: 80, child: Text(label, style: const TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13))),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.onSurface)),
-      ]),
+    context.read<MeetingsBloc>().add(
+      MeetingBookRequested(
+        counselorId: _selectedCounselorId!,
+        startTime: start,
+        endTime: end,
+        notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+      ),
     );
   }
 
@@ -366,66 +753,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   }
 
   String _formatDate(DateTime d) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final wd = days[(d.weekday - 1) % 7];
-    return '$wd, ${d.day} ${months[d.month - 1]} ${d.year}';
-  }
-}
-
-class _MeetingTypeButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _MeetingTypeButton({required this.icon, required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          // Clearly visible selected tint vs flat white unselected
-          color: selected
-              ? AppColors.secondaryContainer.withAlpha(120)
-              : AppColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? AppColors.secondary : AppColors.surfaceVariant,
-            width: selected ? 2.5 : 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: selected ? AppColors.secondary : AppColors.surfaceVariant,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Column(children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Icon(
-              icon,
-              key: ValueKey(selected),
-              color: selected ? AppColors.secondary : AppColors.onSurfaceVariant,
-              size: 30,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: selected ? AppColors.secondary : AppColors.onSurface,
-            ),
-          ),
-          if (selected) ...[const SizedBox(height: 4), Container(width: 24, height: 3, decoration: BoxDecoration(color: AppColors.secondary, borderRadius: BorderRadius.circular(2)))],
-        ]),
-      ),
-    );
+    return DateFormat('EEEE, d MMMM yyyy').format(d);
   }
 }
