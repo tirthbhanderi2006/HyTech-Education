@@ -39,8 +39,9 @@ class Document(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     document_type: Mapped[DocumentType] = mapped_column(SAEnum(DocumentType))
     original_filename: Mapped[str] = mapped_column(String(255))
-    storage_key: Mapped[str] = mapped_column(String(500))               # S3 key
-    storage_url: Mapped[str | None] = mapped_column(String(1000))       # presigned or CDN URL
+    drive_file_id: Mapped[str | None] = mapped_column(String(500), nullable=True)     # Google Drive file ID
+    drive_view_link: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # Shareable Drive link
+    drive_folder_id: Mapped[str | None] = mapped_column(String(500), nullable=True)   # Candidate folder ID
     file_size_kb: Mapped[int | None] = mapped_column(Integer)
     mime_type: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[DocumentStatus] = mapped_column(SAEnum(DocumentStatus), default=DocumentStatus.uploaded)

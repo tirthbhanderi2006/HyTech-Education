@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.routes import auth, cases, documents, notifications
+from app.api.v1.routes import auth, cases, documents, notifications, google, meetings
 from app.core.config import settings
 
 # Import all models to ensure they are registered in the SQLAlchemy Metadata registry
@@ -11,6 +11,8 @@ from app.models.document import Document
 from app.models.notification import Notification
 from app.models.visa_program import VisaProgram
 from app.models.audit_log import AuditLog
+from app.models.counselor_account import CounselorGoogleAccount
+from app.models.meeting import Meeting
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -32,6 +34,8 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(cases.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(google.router, prefix="/api/v1")
+app.include_router(meetings.router, prefix="/api/v1")
 
 
 @app.get("/health")

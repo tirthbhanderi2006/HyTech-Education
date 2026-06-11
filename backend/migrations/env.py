@@ -24,6 +24,8 @@ from app.models.document import Document
 from app.models.notification import Notification
 from app.models.visa_program import VisaProgram
 from app.models.audit_log import AuditLog
+from app.models.counselor_account import CounselorGoogleAccount
+from app.models.meeting import Meeting
 
 target_metadata = Base.metadata
 

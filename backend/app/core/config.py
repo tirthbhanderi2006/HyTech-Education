@@ -13,10 +13,7 @@ class Settings(BaseSettings):
     SYNC_DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_BUCKET_NAME: str = ""
-    AWS_REGION: str = "ap-south-1"
+    COUNSELOR_USER_ID: str = ""
 
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "gpt-4o"
@@ -28,6 +25,12 @@ class Settings(BaseSettings):
 
     FIREBASE_CREDENTIALS_PATH: str = "./firebase-credentials.json"
     TESSERACT_CMD: str = "/usr/bin/tesseract"
+
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/google/callback"
+    GOOGLE_SCOPES: str = "https://www.googleapis.com/auth/calendar"
+    FERNET_KEY: str = ""
 
     class Config:
         env_file = ".env"

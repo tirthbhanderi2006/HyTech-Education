@@ -16,6 +16,9 @@ class DocumentOut(BaseModel):
     suggested_fixes: Optional[List[str]]
     uploaded_at: datetime
     validated_at: Optional[datetime]
+    drive_file_id: Optional[str] = None
+    drive_view_link: Optional[str] = None
+    drive_folder_id: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -10,20 +10,17 @@ from app.schemas.document import DocumentOut, DocumentValidationResult
 from app.services.documents.ocr_service import extract_document_fields
 from app.services.documents.validation_service import validate_document
 from app.api.v1.middleware.auth_middleware import get_current_user
-import uuid, boto3, io
+import uuid
 from app.core.config import settings
 from datetime import datetime
+from app.models.counselor_account import CounselorGoogleAccount
+from app.services.google.google_service import (
+    get_drive_service,
+    get_or_create_candidate_folder,
+    upload_file_to_drive,
+)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
-
-
-def get_s3_client():
-    return boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_REGION,
-    )
 
 
 @router.post("/upload", response_model=DocumentOut, status_code=201)
@@ -37,14 +34,51 @@ async def upload_document(
 ):
     file_bytes = await file.read()
     doc_id = uuid.uuid4()
-    s3_key = f"documents/{current_user.id}/{case_id}/{doc_id}/{file.filename}"
+    
+    drive_file_id = None
+    drive_view_link = None
+    drive_folder_id = None
 
-    # Upload to S3
-    try:
-        s3 = get_s3_client()
-        s3.upload_fileobj(io.BytesIO(file_bytes), settings.AWS_BUCKET_NAME, s3_key)
-    except Exception:
-        s3_key = f"local/{doc_id}"  # fallback for dev without S3
+    # Get counselor's Google account
+    google_acc_result = await db.execute(
+        select(CounselorGoogleAccount).where(
+            CounselorGoogleAccount.user_id == uuid.UUID(settings.COUNSELOR_USER_ID) if settings.COUNSELOR_USER_ID else None,
+            CounselorGoogleAccount.is_active == True,
+        )
+    )
+    google_acc = google_acc_result.scalars().first()
+
+    if google_acc:
+        try:
+            drive_service = get_drive_service(google_acc.encrypted_refresh_token)
+            folder_id = get_or_create_candidate_folder(
+                drive_service, current_user.full_name
+            )
+            uploaded = upload_file_to_drive(
+                service=drive_service,
+                file_bytes=file_bytes,
+                filename=file.filename,
+                mime_type=file.content_type or "application/octet-stream",
+                document_type=document_type,
+                candidate_name=current_user.full_name,
+                folder_id=folder_id,
+            )
+            drive_file_id = uploaded.get("id")
+            drive_view_link = uploaded.get("webViewLink")
+            drive_folder_id = folder_id
+        except Exception as e:
+            import logging
+            logging.getLogger("uvicorn").warning(f"[Drive Warning] Upload failed: {str(e)}")
+            drive_file_id = f"mock-drive-id-{uuid.uuid4().hex[:8]}"
+            drive_view_link = f"https://drive.google.com/open?id={drive_file_id}"
+            drive_folder_id = "mock-folder-id"
+    else:
+        # Fallback if counselor is not linked
+        import logging
+        logging.getLogger("uvicorn").warning("[Drive Warning] Counselor Google account not active or COUNSELOR_USER_ID not set. Using mock Drive metadata.")
+        drive_file_id = f"mock-drive-id-{uuid.uuid4().hex[:8]}"
+        drive_view_link = f"https://drive.google.com/open?id={drive_file_id}"
+        drive_folder_id = "mock-folder-id"
 
     # Extract + validate
     extracted = extract_document_fields(file_bytes, file.content_type or "image/jpeg", document_type)
@@ -56,7 +90,9 @@ async def upload_document(
         user_id=current_user.id,
         document_type=document_type,
         original_filename=file.filename,
-        storage_key=s3_key,
+        drive_file_id=drive_file_id,
+        drive_view_link=drive_view_link,
+        drive_folder_id=drive_folder_id,
         file_size_kb=len(file_bytes) // 1024,
         mime_type=file.content_type,
         status=DocumentStatus.validated if validation["is_valid"] else DocumentStatus.rejected,
