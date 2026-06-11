@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/models/checklist_model.dart';
 import '../../../core/models/document_model.dart';
@@ -173,6 +174,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   _caseId = state.cases.first.id;
                 });
                 context.read<CasesBloc>().add(CaseChecklistLoadRequested(_caseId!));
+                context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
               }
             },
           ),
@@ -245,6 +247,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               return const Center(child: CircularProgressIndicator());
             } else {
               return const Center(child: Text('No active visa applications.'));
+            }
+
+            final docsState = context.watch<DocumentsBloc>().state;
+            List<DocumentModel> uploadedDocs = [];
+            if (docsState is DocumentsLoaded) {
+              uploadedDocs = docsState.documents;
+            } else if (docsState is DocumentsInitial && _caseId != null) {
+              context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
             }
 
             final docs = _mapChecklistToDocs(checklistItems);
@@ -345,13 +355,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   const SizedBox(height: 12),
 
                   // ── Document Cards ───────────────────────────────────────────
-                  ...docs.map((doc) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _DocCard(
-                          doc: doc,
-                          onUpload: () => _showUploadSheet(context, doc),
-                        ),
-                      )),
+                  ...docs.map((doc) {
+                    DocumentModel? matchingDoc;
+                    try {
+                      matchingDoc = uploadedDocs.firstWhere((d) => d.documentType == doc.id);
+                    } catch (_) {
+                      matchingDoc = null;
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _DocCard(
+                        doc: doc,
+                        matchingDoc: matchingDoc,
+                        onUpload: () => _showUploadSheet(context, doc),
+                      ),
+                    );
+                  }),
                 ],
               ),
             );
@@ -493,8 +512,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 // ── Doc Card ─────────────────────────────────────────────────────────
 class _DocCard extends StatelessWidget {
   final _Document doc;
+  final DocumentModel? matchingDoc;
   final VoidCallback onUpload;
-  const _DocCard({required this.doc, required this.onUpload});
+  const _DocCard({required this.doc, this.matchingDoc, required this.onUpload});
+
+  void _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -540,6 +567,28 @@ class _DocCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
+                if (matchingDoc?.driveViewLink != null) ...[
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => _launchURL(matchingDoc!.driveViewLink!),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new, size: 12, color: AppColors.primary),
+                        SizedBox(width: 4),
+                        Text(
+                          'View on Drive',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

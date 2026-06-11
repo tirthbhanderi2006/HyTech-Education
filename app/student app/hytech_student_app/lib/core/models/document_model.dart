@@ -9,6 +9,8 @@ class DocumentModel {
   final Map<String, dynamic>? validationFlags;
   final List<dynamic>? suggestedFixes;
   final DateTime uploadedAt;
+  final String? driveViewLink;
+  final String? driveFolderId;
 
   const DocumentModel({
     required this.id,
@@ -21,6 +23,8 @@ class DocumentModel {
     this.validationFlags,
     this.suggestedFixes,
     required this.uploadedAt,
+    this.driveViewLink,
+    this.driveFolderId,
   });
 
   factory DocumentModel.fromJson(Map<String, dynamic> json) => DocumentModel(
@@ -34,6 +38,8 @@ class DocumentModel {
         validationFlags: json['validation_flags'],
         suggestedFixes: json['suggested_fixes'],
         uploadedAt: DateTime.parse(json['uploaded_at']),
+        driveViewLink: json['drive_view_link'],
+        driveFolderId: json['drive_folder_id'],
       );
 
   bool get isValidated => status == 'validated';
