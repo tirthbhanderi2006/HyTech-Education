@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'core/theme/app_colors.dart';
 import 'features/auth/bloc/auth_bloc.dart';
+import 'features/home/bloc/admin_student_bloc.dart';
+import 'features/appointments/bloc/meetings_bloc.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_dashboard.dart';
 
@@ -18,8 +20,12 @@ class VisaFlowAdminApp extends StatelessWidget {
     // Nunito — same rounded, bold typeface Duolingo uses
     final nunitoBase = GoogleFonts.nunitoTextTheme();
 
-    return BlocProvider(
-      create: (_) => AuthBloc(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<AuthBloc>(create: (_) => AuthBloc()..add(AuthCheckRequested())),
+        BlocProvider<AdminStudentBloc>(create: (_) => AdminStudentBloc()),
+        BlocProvider<MeetingsBloc>(create: (_) => MeetingsBloc()),
+      ],
       child: MaterialApp(
         title: 'VisaFlow Admin',
         debugShowCheckedModeBanner: false,

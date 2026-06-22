@@ -1,11 +1,112 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/api/notifications_api.dart';
+import '../../../core/models/notification_model.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  final NotificationsApi _api = NotificationsApi();
+  List<NotificationModel>? _notifications;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final res = await _api.getNotifications();
+      if (mounted) {
+        setState(() {
+          _notifications = res;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _markRead(String id) async {
+    try {
+      await _api.markAsRead(id);
+      _fetch();
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
+    Widget content;
+    if (_loading) {
+      content = const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    } else if (_error != null) {
+      content = Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Failed to load notifications: $_error', style: const TextStyle(fontWeight: FontWeight.bold))));
+    } else if (_notifications == null || _notifications!.isEmpty) {
+      content = const Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('No new notifications.', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.outline))));
+    } else {
+      content = RefreshIndicator(
+        onRefresh: _fetch,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _notifications!.length,
+          itemBuilder: (context, idx) {
+            final n = _notifications![idx];
+            IconData icon = Icons.notifications_outlined;
+            Color bg = const Color(0xFFE0F2FE);
+            Color iconColor = const Color(0xFF0284C7);
+
+            if (n.type == 'payment') {
+              icon = Icons.payment;
+              bg = const Color(0xFFDCFCE7);
+              iconColor = const Color(0xFF16A34A);
+            } else if (n.type == 'document') {
+              icon = Icons.verified;
+              bg = const Color(0xFFD1FAE5);
+              iconColor = AppColors.primary;
+            } else if (n.type == 'deadline' || n.type == 'warning') {
+              icon = Icons.warning;
+              bg = AppColors.errorContainer;
+              iconColor = AppColors.error;
+            } else if (n.type == 'interview' || n.type == 'person_add') {
+              icon = Icons.person_add;
+              bg = const Color(0xFFEDE9FE);
+              iconColor = AppColors.tertiary;
+            }
+
+            final timeStr = DateFormat('MMM d, h:mm a').format(n.sentAt);
+
+            return InkWell(
+              onTap: n.isRead ? null : () => _markRead(n.id),
+              child: _NotifItem(
+                icon: icon,
+                bg: bg,
+                iconColor: iconColor,
+                title: n.title,
+                subtitle: n.body,
+                time: timeStr,
+                isUnread: !n.isRead,
+              ),
+            );
+          },
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -13,16 +114,7 @@ class NotificationsScreen extends StatelessWidget {
         title: const Text('Notifications', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900)),
         bottom: PreferredSize(preferredSize: const Size.fromHeight(2), child: Container(color: AppColors.surfaceVariant, height: 2)),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: const [
-          _NotifItem(icon: Icons.payment, bg: Color(0xFFDCFCE7), iconColor: Color(0xFF16A34A), title: 'Payment Received', subtitle: '₹15,000 from Arjun Kapoor via Razorpay', time: '10 min ago', isUnread: true),
-          _NotifItem(icon: Icons.verified, bg: Color(0xFFD1FAE5), iconColor: AppColors.primary, title: 'Document Verified', subtitle: "Priya Sharma's passport copy approved", time: '1 hour ago', isUnread: true),
-          _NotifItem(icon: Icons.person_add, bg: Color(0xFFEDE9FE), iconColor: AppColors.tertiary, title: 'New Lead Added', subtitle: 'Neha Gupta — UK Student Visa enquiry', time: '3 hours ago'),
-          _NotifItem(icon: Icons.warning, bg: AppColors.errorContainer, iconColor: AppColors.error, title: 'Action Required', subtitle: '12 documents pending review for >48hrs', time: 'Yesterday'),
-          _NotifItem(icon: Icons.message, bg: Color(0xFFE0F2FE), iconColor: Color(0xFF0284C7), title: 'WhatsApp Automation', subtitle: 'Bulk reminder sent to 15 leads', time: 'Yesterday'),
-        ],
-      ),
+      body: content,
     );
   }
 }

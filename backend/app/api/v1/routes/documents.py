@@ -40,13 +40,22 @@ async def upload_document(
     drive_folder_id = None
 
     # Get counselor's Google account
-    google_acc_result = await db.execute(
-        select(CounselorGoogleAccount).where(
-            CounselorGoogleAccount.user_id == uuid.UUID(settings.COUNSELOR_USER_ID) if settings.COUNSELOR_USER_ID else None,
-            CounselorGoogleAccount.is_active == True,
+    counselor_uuid = None
+    if settings.COUNSELOR_USER_ID:
+        try:
+            counselor_uuid = uuid.UUID(settings.COUNSELOR_USER_ID)
+        except ValueError:
+            pass
+
+    google_acc = None
+    if counselor_uuid:
+        google_acc_result = await db.execute(
+            select(CounselorGoogleAccount).where(
+                CounselorGoogleAccount.user_id == counselor_uuid,
+                CounselorGoogleAccount.is_active == True,
+            )
         )
-    )
-    google_acc = google_acc_result.scalars().first()
+        google_acc = google_acc_result.scalars().first()
 
     if google_acc:
         try:
@@ -149,13 +158,21 @@ async def upload_document(
 
 @router.get("/case/{case_id}", response_model=list[DocumentOut])
 async def list_case_documents(case_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Document).where(Document.case_id == uuid.UUID(case_id), Document.user_id == current_user.id))
+    is_admin = current_user.email == "admin@hytech.com" or str(current_user.id) == settings.COUNSELOR_USER_ID
+    if is_admin:
+        result = await db.execute(select(Document).where(Document.case_id == uuid.UUID(case_id)))
+    else:
+        result = await db.execute(select(Document).where(Document.case_id == uuid.UUID(case_id), Document.user_id == current_user.id))
     return [DocumentOut.model_validate(d) for d in result.scalars().all()]
 
 
 @router.get("/{document_id}/validation", response_model=DocumentValidationResult)
 async def get_validation_result(document_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Document).where(Document.id == uuid.UUID(document_id), Document.user_id == current_user.id))
+    is_admin = current_user.email == "admin@hytech.com" or str(current_user.id) == settings.COUNSELOR_USER_ID
+    if is_admin:
+        result = await db.execute(select(Document).where(Document.id == uuid.UUID(document_id)))
+    else:
+        result = await db.execute(select(Document).where(Document.id == uuid.UUID(document_id), Document.user_id == current_user.id))
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(404, "Document not found")

@@ -5,6 +5,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../features/auth/bloc/auth_bloc.dart';
 import '../../home/presentation/student_home.dart';
 
+import 'register_screen.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -206,9 +208,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       "Don't have an account? ",
                       style: GoogleFonts.nunito(color: AppColors.onSurfaceVariant, fontWeight: FontWeight.w600),
                     ),
-                    Text(
-                      'Contact your consultant',
-                      style: GoogleFonts.nunito(color: AppColors.primary, fontWeight: FontWeight.w800),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                        );
+                      },
+                      child: Text(
+                        'Register Now',
+                        style: GoogleFonts.nunito(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
                     ),
                   ],
                 ),

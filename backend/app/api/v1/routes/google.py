@@ -10,10 +10,19 @@ from app.models.counselor_account import CounselorGoogleAccount
 from app.services.google.google_service import encrypt_token
 import httpx
 import uuid
+import os
+
+# Relax scope matching for token exchange callbacks
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 router = APIRouter(prefix="/google", tags=["Google OAuth"])
 
-SCOPES = [settings.GOOGLE_SCOPES]
+SCOPES = settings.GOOGLE_SCOPES.split(" ")
+# Ensure we request email scope to fetch counselor's google identity
+if "https://www.googleapis.com/auth/userinfo.email" not in SCOPES:
+    SCOPES.append("https://www.googleapis.com/auth/userinfo.email")
+if "openid" not in SCOPES:
+    SCOPES.append("openid")
 
 def _get_flow():
     return Flow.from_client_config(

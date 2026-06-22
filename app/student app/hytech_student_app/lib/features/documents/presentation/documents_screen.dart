@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/models/checklist_model.dart';
 import '../../../core/models/document_model.dart';
+import '../../../core/models/case_model.dart';
 import '../../home/bloc/cases_bloc.dart';
 import '../bloc/documents_bloc.dart';
 import '../../auth/bloc/auth_bloc.dart';
@@ -44,12 +45,25 @@ class DocumentsScreen extends StatefulWidget {
 
 class _DocumentsScreenState extends State<DocumentsScreen> {
   String? _caseId;
+  List<CaseModel> _cases = [];
+  List<ChecklistItemModel> _checklistItems = [];
+  bool _isLoadingChecklist = false;
 
   @override
   void initState() {
     super.initState();
-    // Dispatch loading cases when screen initializes
-    context.read<CasesBloc>().add(CasesLoadRequested());
+    final casesState = context.read<CasesBloc>().state;
+    if (casesState is CasesLoaded) {
+      _cases = casesState.cases;
+      if (_cases.isNotEmpty) {
+        _caseId = _cases.first.id;
+        _isLoadingChecklist = true;
+        context.read<CasesBloc>().add(CaseChecklistLoadRequested(_caseId!));
+        context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
+      }
+    } else {
+      context.read<CasesBloc>().add(CasesLoadRequested());
+    }
   }
 
   String _getDocTitle(String docType) {
@@ -169,12 +183,48 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         listeners: [
           BlocListener<CasesBloc, CasesState>(
             listener: (context, state) {
-              if (state is CasesLoaded && state.cases.isNotEmpty && _caseId == null) {
+              if (state is CasesLoaded) {
                 setState(() {
-                  _caseId = state.cases.first.id;
+                  _cases = state.cases;
+                  if (state.cases.isNotEmpty) {
+                    if (_caseId == null || !state.cases.any((c) => c.id == _caseId)) {
+                      _caseId = state.cases.first.id;
+                      _isLoadingChecklist = true;
+                      context.read<CasesBloc>().add(CaseChecklistLoadRequested(_caseId!));
+                      context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
+                    }
+                  } else {
+                    _caseId = null;
+                    _checklistItems = [];
+                    _isLoadingChecklist = false;
+                  }
                 });
-                context.read<CasesBloc>().add(CaseChecklistLoadRequested(_caseId!));
-                context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
+              } else if (state is CaseCreated) {
+                setState(() {
+                  if (!_cases.any((c) => c.id == state.newCase.id)) {
+                    _cases = [..._cases, state.newCase];
+                  }
+                  _caseId = state.newCase.id;
+                  _isLoadingChecklist = true;
+                  context.read<CasesBloc>().add(CaseChecklistLoadRequested(_caseId!));
+                  context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
+                });
+              } else if (state is CaseChecklistLoaded) {
+                setState(() {
+                  _checklistItems = state.items;
+                  _isLoadingChecklist = false;
+                });
+              } else if (state is CasesLoading) {
+                setState(() {
+                  _isLoadingChecklist = true;
+                });
+              } else if (state is CasesError) {
+                setState(() {
+                  _isLoadingChecklist = false;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(state.message), backgroundColor: AppColors.error),
+                );
               }
             },
           ),
@@ -218,35 +268,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             },
           ),
         ],
-        child: BlocBuilder<CasesBloc, CasesState>(
-          builder: (context, state) {
-            if (state is CasesLoading) {
+        child: Builder(
+          builder: (context) {
+            if (_cases.isEmpty && _isLoadingChecklist) {
               return const Center(child: CircularProgressIndicator());
-            }
-            if (state is CasesError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Failed to load documents: ${state.message}', style: const TextStyle(color: AppColors.error)),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: () => context.read<CasesBloc>().add(CasesLoadRequested()),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              );
             }
 
-            List<ChecklistItemModel> checklistItems = [];
-            if (state is CaseChecklistLoaded) {
-              checklistItems = state.items;
-            } else if (_caseId != null) {
-              // Trigger reload checklist if we have a case ID but aren't in loaded state
-              return const Center(child: CircularProgressIndicator());
-            } else {
-              return const Center(child: Text('No active visa applications.'));
+            if (_cases.isEmpty) {
+              return Center(
+                child: Text(
+                  'No active visa applications.',
+                  style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.onSurfaceVariant),
+                ),
+              );
             }
 
             final docsState = context.watch<DocumentsBloc>().state;
@@ -257,7 +291,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               context.read<DocumentsBloc>().add(DocumentsLoadRequested(_caseId!));
             }
 
-            final docs = _mapChecklistToDocs(checklistItems);
+            final docs = _mapChecklistToDocs(_checklistItems);
             final uploadedCount = docs.where((d) => d.status == _DocStatus.verified || d.status == _DocStatus.processing).length;
             final totalCount = docs.length;
 
@@ -292,89 +326,133 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // ── Progress Card ────────────────────────────────────────────
+                  // ── Case Dropdown Selector ──────────────────────────────────
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppColors.surfaceVariant, width: 2),
                       boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
                     ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Upload Progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                            Text('$uploadedCount of $totalCount Uploaded', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 13)),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: LinearProgressIndicator(
-                            value: totalCount > 0 ? uploadedCount / totalCount : 0.0,
-                            backgroundColor: AppColors.surfaceVariant,
-                            color: AppColors.primary,
-                            minHeight: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ── AI Verification Banner ───────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.tertiaryFixed.withAlpha(76),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.tertiary, width: 2),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.tertiary, shape: BoxShape.circle), child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20)),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('AI Verification Active', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.tertiary, fontSize: 14)),
-                              Text('All uploads are analyzed and validated instantly by the AI Agent.', style: TextStyle(fontSize: 12, color: AppColors.onSurface)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _caseId,
+                        isExpanded: true,
+                        icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.primary),
+                        style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface),
+                        items: _cases.map((c) {
+                          return DropdownMenuItem<String>(
+                            value: c.id,
+                            child: Text('${c.destinationCountry} - ${c.visaType} (${c.status.toUpperCase()})'),
+                          );
+                        }).toList(),
+                        onChanged: (newVal) {
+                          if (newVal != null && newVal != _caseId) {
+                            setState(() {
+                              _caseId = newVal;
+                              _checklistItems = [];
+                              _isLoadingChecklist = true;
+                            });
+                            context.read<CasesBloc>().add(CaseChecklistLoadRequested(newVal));
+                            context.read<DocumentsBloc>().add(DocumentsLoadRequested(newVal));
+                          }
+                        },
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
 
-                  const Text('Required Documents', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.onSurface)),
-                  const SizedBox(height: 12),
-
-                  // ── Document Cards ───────────────────────────────────────────
-                  ...docs.map((doc) {
-                    DocumentModel? matchingDoc;
-                    try {
-                      matchingDoc = uploadedDocs.firstWhere((d) => d.documentType == doc.id);
-                    } catch (_) {
-                      matchingDoc = null;
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _DocCard(
-                        doc: doc,
-                        matchingDoc: matchingDoc,
-                        onUpload: () => _showUploadSheet(context, doc),
+                  if (_isLoadingChecklist)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    )
+                  else ...[
+                    // ── Progress Card ────────────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.surfaceVariant, width: 2),
+                        boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 3))],
                       ),
-                    );
-                  }),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Upload Progress', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              Text('$uploadedCount of $totalCount Uploaded', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 13)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: totalCount > 0 ? uploadedCount / totalCount : 0.0,
+                              backgroundColor: AppColors.surfaceVariant,
+                              color: AppColors.primary,
+                              minHeight: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── AI Verification Banner ───────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.tertiaryFixed.withAlpha(76),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.tertiary, width: 2),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(width: 40, height: 40, decoration: const BoxDecoration(color: AppColors.tertiary, shape: BoxShape.circle), child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20)),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                               Text('AI Verification Active', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.tertiary, fontSize: 14)),
+                                Text('All uploads are analyzed and validated instantly by the AI Agent.', style: TextStyle(fontSize: 12, color: AppColors.onSurface)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    const Text('Required Documents', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.onSurface)),
+                    const SizedBox(height: 12),
+
+                    // ── Document Cards ───────────────────────────────────────────
+                    ...docs.map((doc) {
+                      DocumentModel? matchingDoc;
+                      try {
+                        matchingDoc = uploadedDocs.firstWhere((d) => d.documentType == doc.id);
+                      } catch (_) {
+                        matchingDoc = null;
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _DocCard(
+                          doc: doc,
+                          matchingDoc: matchingDoc,
+                          onUpload: () => _showUploadSheet(context, doc),
+                        ),
+                      );
+                    }),
+                  ],
                 ],
               ),
             );
-          },
+          }
         ),
       ),
     );
@@ -518,9 +596,9 @@ class _DocCard extends StatelessWidget {
 
   void _launchURL(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    } catch (_) {}
   }
 
   @override

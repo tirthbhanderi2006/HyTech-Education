@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/api/auth_api.dart';
 
 class AnalyticsScreen extends StatefulWidget {
-  const AnalyticsScreen({super.key});
+  final int refreshTrigger;
+  const AnalyticsScreen({super.key, this.refreshTrigger = 0});
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -13,23 +16,119 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   int _touchedBarIndex = -1;
   int _touchedPieIndex = -1;
 
-  // ── Data ────────────────────────────────────────────────────────────
-  final List<_BarData> _barData = const [
-    _BarData('New', 160, Color(0xFFC8E6FF)),
-    _BarData('Contacted', 280, Color(0xFF2FB8FF)),
-    _BarData('Docs', 120, Color(0xFF87FE45)),
-    _BarData('Submitted', 360, AppColors.primaryContainer),
-    _BarData('Rejected', 60, AppColors.errorContainer),
-  ];
+  Map<String, dynamic>? _stats;
+  bool _loading = true;
+  String? _error;
 
-  final List<_PieData> _pieData = const [
-    _PieData('Student Visa', 55, AppColors.primaryContainer),
-    _PieData('Tourist Visa', 25, AppColors.secondaryContainer),
-    _PieData('Work Visa', 20, AppColors.tertiaryContainer),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  @override
+  void didUpdateWidget(AnalyticsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTrigger != oldWidget.refreshTrigger) {
+      _fetchStats();
+    }
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final data = await AuthApi().getAdminStats();
+      if (mounted) {
+        setState(() {
+          _stats = data;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.0),
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
+    if (_error != null || _stats == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: AppColors.error),
+              const SizedBox(height: 12),
+              Text('Failed to load analytics: $_error', style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _error = null;
+                  });
+                  _fetchStats();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final leadsCount = _stats!['leads_count'] ?? 0;
+    final pendingDocs = _stats!['pending_docs_count'] ?? 0;
+    final appointments = _stats!['appointments_count'] ?? 0;
+    final revenue = _stats!['revenue_mtd'] ?? '₹0K';
+    
+    final countryDist = _stats!['country_distribution'] as Map? ?? {};
+    final statusDist = _stats!['status_distribution'] as Map? ?? {};
+
+    // Dynamic bar data
+    final List<_BarData> barData = [
+      _BarData('Discovery', (statusDist['Discovery'] ?? 0).toDouble(), const Color(0xFFC8E6FF)),
+      _BarData('In Progress', (statusDist['In Progress'] ?? 0).toDouble(), const Color(0xFF2FB8FF)),
+      _BarData('Docs Sub', (statusDist['Docs Submitted'] ?? 0).toDouble(), const Color(0xFF87FE45)),
+      _BarData('Approved', (statusDist['Approved'] ?? 0).toDouble(), AppColors.primaryContainer),
+      _BarData('Rejected', (statusDist['Rejected'] ?? 0).toDouble(), AppColors.errorContainer),
+    ];
+
+    // Dynamic pie data (only show non-zero countries or a fallback)
+    final List<_PieData> pieData = [
+      _PieData('USA', (countryDist['US'] ?? 0).toDouble(), AppColors.primaryContainer),
+      _PieData('UK', (countryDist['GB'] ?? 0).toDouble(), AppColors.secondaryContainer),
+      _PieData('Canada', (countryDist['CA'] ?? 0).toDouble(), AppColors.tertiaryContainer),
+      _PieData('Australia', (countryDist['AU'] ?? 0).toDouble(), const Color(0xFF2FB8FF)),
+      _PieData('Germany', (countryDist['DE'] ?? 0).toDouble(), const Color(0xFF87FE45)),
+    ].where((p) => p.value > 0).toList();
+
+    if (pieData.isEmpty) {
+      pieData.add(const _PieData('No Cases', 100.0, AppColors.outline));
+    }
+
+    // Calculate dynamic conversion rate
+    final approvedCount = statusDist['Approved'] ?? 0;
+    final totalCases = barData.fold<double>(0, (sum, b) => sum + b.value);
+    final conversion = totalCases > 0 ? (approvedCount / totalCases * 100).toStringAsFixed(1) : '0';
+
+    // Max value for bar chart bounding
+    final double maxBarY = barData.fold<double>(10, (max, b) => b.value > max ? b.value : max) + 5;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
@@ -57,13 +156,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   border: Border.all(color: AppColors.surfaceVariant, width: 2),
                   boxShadow: const [BoxShadow(color: AppColors.surfaceVariant, offset: Offset(0, 2))],
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.calendar_month, size: 15, color: AppColors.outline),
-                    SizedBox(width: 5),
-                    Text('Oct 2023', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    Icon(Icons.arrow_drop_down, color: AppColors.outline),
+                    const Icon(Icons.calendar_month, size: 15, color: AppColors.outline),
+                    const SizedBox(width: 5),
+                    Text(DateFormat('MMM yyyy').format(DateTime.now()), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const Icon(Icons.arrow_drop_down, color: AppColors.outline),
                   ],
                 ),
               ),
@@ -79,11 +178,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             childAspectRatio: 1.45,
-            children: const [
-              _KpiCard(label: 'Total Leads', value: '1,248', trend: '+12%', icon: Icons.group, color: AppColors.secondary, trendGood: true),
-              _KpiCard(label: 'Conversion', value: '42.5%', trend: '+3.2%', icon: Icons.check_circle, color: AppColors.primary, trendGood: true),
-              _KpiCard(label: 'Avg. Duration', value: '14 Days', trend: '+2 Days', icon: Icons.timer, color: AppColors.error, trendGood: false),
-              _KpiCard(label: 'Revenue', value: '₹4.2M', trend: '+18%', icon: Icons.payments, color: AppColors.tertiary, trendGood: true),
+            children: [
+              _KpiCard(label: 'Total Leads', value: '$leadsCount', trend: '+100%', icon: Icons.group, color: AppColors.secondary, trendGood: true),
+              _KpiCard(label: 'Conversion', value: '$conversion%', trend: '+5.0%', icon: Icons.check_circle, color: AppColors.primary, trendGood: true),
+              _KpiCard(label: 'Appointments', value: '$appointments', trend: 'Active', icon: Icons.event, color: AppColors.error, trendGood: true),
+              _KpiCard(label: 'M.T.D. Revenue', value: revenue, trend: 'Dynamic', icon: Icons.payments, color: AppColors.tertiary, trendGood: true),
             ],
           ),
           const SizedBox(height: 24),
@@ -95,7 +194,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               height: 220,
               child: BarChart(
                 BarChartData(
-                  maxY: 420,
+                  maxY: maxBarY,
                   barTouchData: BarTouchData(
                     touchCallback: (event, response) {
                       setState(() {
@@ -105,7 +204,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipColor: (_) => AppColors.onSurface.withAlpha(220),
                       getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
-                        '${_barData[groupIndex].label}\n${rod.toY.toInt()}',
+                        '${barData[groupIndex].label}\n${rod.toY.toInt()}',
                         const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     ),
@@ -115,7 +214,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 32,
-                        interval: 100,
+                        interval: (maxBarY / 4).clamp(1, 100).toDouble(),
                         getTitlesWidget: (val, meta) => Text(
                           val.toInt().toString(),
                           style: const TextStyle(fontSize: 10, color: AppColors.onSurfaceVariant),
@@ -128,10 +227,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         reservedSize: 28,
                         getTitlesWidget: (val, meta) {
                           final i = val.toInt();
-                          if (i < 0 || i >= _barData.length) return const SizedBox.shrink();
+                          if (i < 0 || i >= barData.length) return const SizedBox.shrink();
                           return Padding(
                             padding: const EdgeInsets.only(top: 6),
-                            child: Text(_barData[i].label, style: const TextStyle(fontSize: 10, color: AppColors.onSurfaceVariant)),
+                            child: Text(barData[i].label, style: const TextStyle(fontSize: 9, color: AppColors.onSurfaceVariant)),
                           );
                         },
                       ),
@@ -144,8 +243,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     getDrawingHorizontalLine: (_) => const FlLine(color: AppColors.surfaceVariant, strokeWidth: 1),
                   ),
                   borderData: FlBorderData(show: false),
-                  barGroups: List.generate(_barData.length, (i) {
-                    final d = _barData[i];
+                  barGroups: List.generate(barData.length, (i) {
+                    final d = barData[i];
                     final isTouched = i == _touchedBarIndex;
                     return BarChartGroupData(
                       x: i,
@@ -157,7 +256,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                           backDrawRodData: BackgroundBarChartRodData(
                             show: true,
-                            toY: 420,
+                            toY: maxBarY,
                             color: AppColors.surfaceVariant.withAlpha(80),
                           ),
                         ),
@@ -192,14 +291,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               });
                             },
                           ),
-                          sections: List.generate(_pieData.length, (i) {
-                            final d = _pieData[i];
+                          sections: List.generate(pieData.length, (i) {
+                            final d = pieData[i];
                             final isTouched = i == _touchedPieIndex;
                             return PieChartSectionData(
                               value: d.value.toDouble(),
                               color: d.color,
                               radius: isTouched ? 38 : 32,
-                              title: '${d.value}%',
+                              title: '${d.value.toInt()}',
                               titleStyle: TextStyle(
                                 fontSize: isTouched ? 13 : 11,
                                 fontWeight: FontWeight.bold,
@@ -209,11 +308,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           }),
                         ),
                       ),
-                      const Column(
+                      Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('1,248', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.onSurface)),
-                          Text('Total', style: TextStyle(fontSize: 10, color: AppColors.onSurfaceVariant)),
+                          Text('$leadsCount', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.onSurface)),
+                          const Text('Total', style: TextStyle(fontSize: 10, color: AppColors.onSurfaceVariant)),
                         ],
                       ),
                     ],
@@ -223,7 +322,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: _pieData.map((d) => Padding(
+                    children: pieData.map((d) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -233,7 +332,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             const SizedBox(width: 8),
                             Text(d.label, style: const TextStyle(fontSize: 13, color: AppColors.onSurface)),
                           ]),
-                          Text('${d.value}%', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.onSurface)),
+                          Text('${d.value.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.onSurface)),
                         ],
                       ),
                     )).toList(),
@@ -283,9 +382,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   Text('Action Required', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ]),
                 const SizedBox(height: 12),
-                _alertRow('12 Overdue Documents', 'Clients waiting for review > 48hrs', 'Review'),
+                _alertRow('$pendingDocs Overdue Documents', 'Clients waiting for review > 48hrs', 'Review'),
                 const SizedBox(height: 8),
-                _alertRow('5 Rejected Applications', 'Requires consultant intervention', 'View'),
+                _alertRow('$appointments Active Appointments', 'Appointments currently booked in CRM', 'View'),
               ],
             ),
           ),
@@ -342,7 +441,7 @@ class _BarData {
 
 class _PieData {
   final String label;
-  final int value;
+  final double value;
   final Color color;
   const _PieData(this.label, this.value, this.color);
 }

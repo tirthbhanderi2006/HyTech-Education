@@ -43,6 +43,8 @@ class UserOut(BaseModel):
     subscription_tier: str
     is_verified: bool
     created_at: datetime
+    language_scores: Optional[Dict[str, Any]] = None
+    financial_info: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
