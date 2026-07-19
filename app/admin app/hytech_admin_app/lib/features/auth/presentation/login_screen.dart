@@ -43,12 +43,10 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
     super.dispose();
   }
 
-  Future<void> _onLogin() async {
-    setState(() => _isLoading = true);
-    // Simulated 1.5 s network delay — replace with real auth call
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
-    context.read<AuthBloc>().add(const LoginRequested('admin', 'admin'));
+  void _onLogin() {
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    context.read<AuthBloc>().add(LoginRequested(email, password));
   }
 
   @override
@@ -57,7 +55,11 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
       backgroundColor: AppColors.surface,
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
+          if (state is AuthLoading) {
+            setState(() => _isLoading = true);
+          }
           if (state is AuthAuthenticated) {
+            setState(() => _isLoading = false);
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const HomeDashboard()),
             );
@@ -65,6 +67,9 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
           if (state is AuthError) {
             setState(() => _isLoading = false);
             _shakeCtrl.forward(from: 0);
+          }
+          if (state is AuthUnauthenticated) {
+            setState(() => _isLoading = false);
           }
         },
         child: SafeArea(

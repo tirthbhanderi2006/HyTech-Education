@@ -100,6 +100,15 @@ async def list_meetings(
     )
     return result.scalars().all()
 
+@router.get("/all", response_model=list[MeetingOut])
+async def list_all_meetings(
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns list of ALL meetings in the system for admin management."""
+    result = await db.execute(select(Meeting).order_by(Meeting.start_time.desc()))
+    return result.scalars().all()
+
+
 @router.patch("/{meeting_id}/reschedule", response_model=MeetingOut)
 async def reschedule_meeting(
     meeting_id: uuid.UUID,

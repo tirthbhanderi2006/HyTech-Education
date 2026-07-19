@@ -2,7 +2,7 @@ class ApiConstants {
   // Change to your machine IP when testing on physical device
   // Use http://10.0.2.2:8000 for Android emulator
   // Use http://localhost:8000 for iOS simulator / web
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
+  static const String baseUrl = 'http://10.232.70.85:8000/api/v1';
 
   // Auth
   static const String register   = '/auth/register';
@@ -11,7 +11,7 @@ class ApiConstants {
   static const String profile    = '/auth/profile';
 
   // Cases
-  static const String cases         = '/cases';
+  static const String cases         = '/cases/';
   static String caseById(String id) => '/cases/$id';
   static String eligibility(String id) => '/cases/$id/eligibility';
   static String risk(String id)        => '/cases/$id/risk';

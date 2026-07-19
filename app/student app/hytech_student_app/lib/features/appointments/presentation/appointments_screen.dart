@@ -254,7 +254,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               const SizedBox(height: 8),
               const Text(
                 'You do not have any visa counseling sessions booked. Book a new session to connect with a consultant.',
-                textAlign: Center,
+                textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
               ),
               const SizedBox(height: 24),

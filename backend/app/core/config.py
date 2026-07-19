@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Groq API settings
     GROQ_API_KEY: str | None = None
     GROQ_API_BASE: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "llama-3.3-70b-specdec"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     FIREBASE_CREDENTIALS_PATH: str = "./firebase-credentials.json"
     TESSERACT_CMD: str = "/usr/bin/tesseract"

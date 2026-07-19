@@ -60,4 +60,8 @@ class CasesApi {
     );
     return ChecklistItemModel.fromJson(res.data);
   }
+
+  Future<void> deleteCase(String caseId) async {
+    await _dio.delete(ApiConstants.caseById(caseId));
+  }
 }

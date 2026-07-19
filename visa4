@@ -1,0 +1,45 @@
+# Walkthrough - Flutter API & BLoC Layer Integration
+
+We have successfully integrated the complete Flutter API client, secure storage, model structures, and BLoC classes from `d:\git\visa\hytech_flutter_api_layer` into the target `hytech_student_app` application.
+
+## Changes Made
+
+### 1. Configuration & Dependencies
+- Modified [pubspec.yaml](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/pubspec.yaml) to include all packages required for network operations, token management, file uploads, and UI widgets:
+  - `dio: ^5.4.3+1`
+  - `shared_preferences: ^2.3.2`
+  - `flutter_secure_storage: ^9.2.2`
+  - `file_picker: ^8.1.2`
+  - `image_picker: ^1.1.2`
+  - `path_provider: ^2.1.4`
+  - `intl: ^0.19.0`
+  - `cached_network_image: ^3.4.1`
+  - `flutter_local_notifications: ^17.2.3`
+  - `percent_indicator: ^4.2.3`
+  - `shimmer: ^3.0.0`
+
+### 2. Core API Client, Models, and Storage
+- Copied all core directories recursively to [hytech_student_app/lib/core](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core):
+  - **`api/`**: Includes [api_client.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_client.dart) (Dio wrapper with authorization headers and JWT auto-clearing interceptors), [api_constants.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_constants.dart) (endpoint definitions), [api_exception.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_exception.dart), [auth_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/auth_api.dart), [cases_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/cases_api.dart), [documents_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/documents_api.dart), and [notifications_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/notifications_api.dart).
+  - **`models/`**: Includes Dart object structures mapped to backend JSON payloads, containing [case_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/case_model.dart), [checklist_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/checklist_model.dart), [document_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/document_model.dart), [notification_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/notification_model.dart), and [user_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/user_model.dart).
+  - **`storage/`**: Includes [token_storage.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/storage/token_storage.dart) using `FlutterSecureStorage` for encrypted JWT session cookies and user details metadata.
+
+### 3. State Management (BLoCs)
+- Copied feature business logic blocs to their matching directories under [hytech_student_app/lib/features](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features):
+  - [auth_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/auth/bloc/auth_bloc.dart) (removed old placeholder parts, consolidated states and events).
+  - [cases_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/home/bloc/cases_bloc.dart) (manages visa checklist, eligibility, and risk evaluations).
+  - [documents_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/documents/bloc/documents_bloc.dart) (handles multi-part document uploads).
+  - [notifications_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/notifications/bloc/notifications_bloc.dart) (handles notifications fetching and read marking).
+
+### 4. UI Screen Wiring
+- Modified [main.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/main.dart) to provision these BLoCs globally using a `MultiBlocProvider`, dispatching `AuthCheckRequested` immediately to determine if the user has an active session.
+- Rewrote [login_screen.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/auth/presentation/login_screen.dart) to dispatch `AuthLoginRequested` with user-entered text credentials, listen to loading, authenticated, or error states, and display validation issues in a SnackBar.
+- Refactored [documents_screen.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/documents/presentation/documents_screen.dart) to dynamically map checklist items from `CasesBloc` (`CaseChecklistLoaded` state) into the visual list representation. Uses `file_picker` and `image_picker` (camera/gallery selection) to execute multi-part file uploads using `DocumentsBloc` and automatically triggers progress updates when done.
+- Modified [student_home.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/home/presentation/student_home.dart) to read the user profile (displaying their name and initials dynamically) and use `CasesBloc` to render progress percentages, destination country details, and visa stage states.
+- Rewrote [notifications_screen.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/notifications/presentation/notifications_screen.dart) to load real notifications from the backend, show timestamps, mark read, and use dynamic icons based on notification categories.
+
+## Verification Results
+
+Since Flutter is not installed locally on this environment (as indicated in initial logs), compiling or running emulator pipelines locally was skipped. However, we verified file structure integrity and carried out full static code review:
+- No bracket mismatch errors exist in modified presentation files.
+- `git status` shows all files have been mapped and modified matching our plans exactly.

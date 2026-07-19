@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import 'notifications_screen.dart';
+import 'payments_screen.dart';
+import 'comms_log_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -32,22 +37,54 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
           const Text('Platform Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.onSurface)),
           const SizedBox(height: 12),
-          _SettingsTile(icon: Icons.notifications_outlined, title: 'Notifications', subtitle: 'Manage push and email alerts', onTap: () {}),
-          _SettingsTile(icon: Icons.people_outline, title: 'Consultant Accounts', subtitle: 'Manage team members and roles', onTap: () {}),
-          _SettingsTile(icon: Icons.payments_outlined, title: 'Razorpay Settings', subtitle: 'Configure payment gateway', onTap: () {}),
-          _SettingsTile(icon: Icons.message_outlined, title: 'WhatsApp (WATI)', subtitle: 'Templates and automation config', onTap: () {}),
-          _SettingsTile(icon: Icons.document_scanner_outlined, title: 'OCR Pipeline', subtitle: 'Document processing settings', onTap: () {}),
+          _SettingsTile(
+            icon: Icons.notifications_outlined,
+            title: 'Notifications',
+            subtitle: 'Manage push and email alerts',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+          ),
+          _SettingsTile(
+            icon: Icons.people_outline,
+            title: 'Consultant Accounts',
+            subtitle: 'Manage team members and roles',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.payments_outlined,
+            title: 'Razorpay Settings',
+            subtitle: 'Configure payment gateway',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentsScreen())),
+          ),
+          _SettingsTile(
+            icon: Icons.message_outlined,
+            title: 'WhatsApp (WATI)',
+            subtitle: 'Templates and automation config',
+            onTap: () {},
+          ),
+          _SettingsTile(
+            icon: Icons.document_scanner_outlined,
+            title: 'OCR Pipeline',
+            subtitle: 'Document processing settings',
+            onTap: () {},
+          ),
           const SizedBox(height: 24),
           const Text('Security', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.onSurface)),
           const SizedBox(height: 12),
           _SettingsTile(icon: Icons.lock_outline, title: 'Change Password', subtitle: 'Update your admin credentials', onTap: () {}),
-          _SettingsTile(icon: Icons.history, title: 'Audit Log', subtitle: 'View all admin actions', onTap: () {}),
+          _SettingsTile(
+            icon: Icons.history,
+            title: 'Audit Log',
+            subtitle: 'View all admin actions',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CommsLogScreen())),
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity, height: 52,
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(foregroundColor: AppColors.error, side: const BorderSide(color: AppColors.error, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              onPressed: () {},
+              onPressed: () {
+                context.read<AuthBloc>().add(AuthLogoutRequested());
+              },
               icon: const Icon(Icons.logout),
               label: const Text('SIGN OUT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
             ),

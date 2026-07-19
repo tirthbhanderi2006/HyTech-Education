@@ -1,0 +1,96 @@
+# Implementation Plan - Flutter API & BLoC Layer Integration
+
+This plan outlines the integration of the Flutter API client, storage, models, and business logic (BLoC) files from `d:\git\visa\hytech_flutter_api_layer` into the target `hytech_student_app` under `d:\git\visa\HyTech-Education\app\student app\hytech_student_app`.
+
+## User Review Required
+
+> [!IMPORTANT]
+> - We will copy the core folders (`api`, `models`, `storage`) into `lib/core`.
+> - We will update `pubspec.yaml` to include all necessary plugins (`dio`, `flutter_secure_storage`, `file_picker`, etc.) and run `flutter pub get`.
+> - We will replace the target app's empty/placeholder BLoCs in `lib/features/...` with the fully implemented BLoCs from `hytech_flutter_api_layer`.
+> - We will wire up `main.dart` with a `MultiBlocProvider` including `AuthBloc`, `CasesBloc`, `DocumentsBloc`, and `NotificationsBloc` so that state is accessible.
+> - We will update `login_screen.dart` and `documents_screen.dart` to connect the UI elements to these new BLoCs.
+
+## Open Questions
+
+> [!NOTE]
+> Since we only have access to terminal commands and cannot run an emulator, we will verify the code integration by compiling/resolving dependencies with `flutter pub get` and reviewing Dart static analysis.
+
+## Proposed Changes
+
+### Configuration & Dependencies
+
+#### [MODIFY] [pubspec.yaml](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/pubspec.yaml)
+- Add required dependencies under `dependencies`:
+  - `dio: ^5.4.3+1`
+  - `shared_preferences: ^2.3.2`
+  - `flutter_secure_storage: ^9.2.2`
+  - `file_picker: ^8.1.2`
+  - `image_picker: ^1.1.2`
+  - `path_provider: ^2.1.4`
+  - `intl: ^0.19.0`
+  - `cached_network_image: ^3.4.1`
+  - `flutter_local_notifications: ^17.2.3`
+  - `percent_indicator: ^4.2.3`
+  - `shimmer: ^3.0.0`
+
+---
+
+### Core API & Models
+
+#### [NEW] [api_client.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_client.dart)
+#### [NEW] [api_constants.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_constants.dart)
+#### [NEW] [api_exception.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/api_exception.dart)
+#### [NEW] [auth_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/auth_api.dart)
+#### [NEW] [cases_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/cases_api.dart)
+#### [NEW] [documents_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/documents_api.dart)
+#### [NEW] [notifications_api.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/notifications_api.dart)
+#### [NEW] [service_locator.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/api/service_locator.dart)
+#### [NEW] [token_storage.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/storage/token_storage.dart)
+#### [NEW] [case_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/case_model.dart)
+#### [NEW] [checklist_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/checklist_model.dart)
+#### [NEW] [document_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/document_model.dart)
+#### [NEW] [notification_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/notification_model.dart)
+#### [NEW] [user_model.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/core/models/user_model.dart)
+
+- Copy all core directories (`api`, `storage`, `models`) from `hytech_flutter_api_layer/lib/core/` to `hytech_student_app/lib/core/`.
+
+---
+
+### Features and State Management (BLoCs)
+
+#### [MODIFY] [auth_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/auth/bloc/auth_bloc.dart)
+- Replace placeholder code with full logic (handles login, register, check, logout, profile update).
+- **Note**: Clean up or delete old placeholder `auth_event.dart` and `auth_state.dart` files since the integrated `auth_bloc.dart` has events and states defined inline in the single file.
+
+#### [NEW] [documents_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/documents/bloc/documents_bloc.dart)
+- Copy full logic file from `hytech_flutter_api_layer`.
+
+#### [NEW] [cases_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/home/bloc/cases_bloc.dart)
+- Copy full logic file from `hytech_flutter_api_layer`.
+
+#### [NEW] [notifications_bloc.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/notifications/bloc/notifications_bloc.dart)
+- Copy/create the BLoC file for the notifications feature.
+
+---
+
+### UI Screens Integration
+
+#### [MODIFY] [main.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/main.dart)
+- Update to wrap the MaterialApp in a `MultiBlocProvider` providing `AuthBloc` (with a startup `AuthCheckRequested` event), `CasesBloc`, `DocumentsBloc`, and `NotificationsBloc`.
+
+#### [MODIFY] [login_screen.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/auth/presentation/login_screen.dart)
+- Connect input text fields (`_emailCtrl` and `_passwordCtrl`) to dispatch `AuthLoginRequested(_emailCtrl.text, _passwordCtrl.text)` on form submit.
+- Handle error messages from `AuthError` state via Scaffolds or SnackBars.
+
+#### [MODIFY] [documents_screen.dart](file:///d:/git/visa/HyTech-Education/app/student%20app/hytech_student_app/lib/features/documents/presentation/documents_screen.dart)
+- Use `BlocBuilder<CasesBloc, CasesState>` or `BlocBuilder<DocumentsBloc, DocumentsState>` to fetch checklist items.
+- Wire up `file_picker` and `image_picker` to perform real document uploads by dispatching `DocumentUploadRequested` to `DocumentsBloc`.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Inside `d:\git\visa\HyTech-Education\app\student app\hytech_student_app`, run `flutter pub get`.
+- Verify compilation by running `flutter analyze` or building a web/apk version if needed.

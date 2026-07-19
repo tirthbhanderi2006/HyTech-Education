@@ -37,6 +37,12 @@ class CaseChecklistLoadRequested extends CasesEvent {
   @override List<Object?> get props => [caseId];
 }
 
+class CaseDeleteRequested extends CasesEvent {
+  final String caseId;
+  const CaseDeleteRequested(this.caseId);
+  @override List<Object?> get props => [caseId];
+}
+
 // ── States ────────────────────────────────────────────────────────────────────
 abstract class CasesState extends Equatable {
   const CasesState();
@@ -82,6 +88,7 @@ class CasesBloc extends Bloc<CasesEvent, CasesState> {
     on<CaseEligibilityRequested>(_onEligibility);
     on<CaseRiskRequested>(_onRisk);
     on<CaseChecklistLoadRequested>(_onChecklist);
+    on<CaseDeleteRequested>(_onDelete);
   }
 
   Future<void> _onLoad(CasesLoadRequested e, Emitter<CasesState> emit) async {
@@ -134,6 +141,17 @@ class CasesBloc extends Bloc<CasesEvent, CasesState> {
     try {
       final items = await _api.getChecklist(e.caseId);
       emit(CaseChecklistLoaded(items));
+    } on ApiException catch (ex) {
+      emit(CasesError(ex.message));
+    }
+  }
+
+  Future<void> _onDelete(CaseDeleteRequested e, Emitter<CasesState> emit) async {
+    emit(CasesLoading());
+    try {
+      await _api.deleteCase(e.caseId);
+      final cases = await _api.listCases();
+      emit(CasesLoaded(cases));
     } on ApiException catch (ex) {
       emit(CasesError(ex.message));
     }
