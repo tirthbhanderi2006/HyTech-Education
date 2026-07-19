@@ -1,8 +1,8 @@
 class ApiConstants {
-  // Change to your machine IP when testing on physical device
-  // Use http://10.0.2.2:8000 for Android emulator
-  // Use http://localhost:8000 for iOS simulator / web
-  static const String baseUrl = 'http://10.232.70.85:8000/api/v1';
+  // Production backend on Render
+  // For local dev, change baseUrl to http://10.0.2.2:8000/api/v1 (Android emulator)
+  // or http://localhost:8000/api/v1 (iOS simulator / web)
+  static const String baseUrl = 'https://hytech-education-backend.onrender.com/api/v1';
 
   // Auth
   static const String register   = '/auth/register';
